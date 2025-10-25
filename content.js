@@ -248,7 +248,7 @@
   function fetchGoogleResults(query, container) {
     // TODO: Replace with your own API key and Search Engine ID
     const API_KEY = '';
-    const CX = '';``
+    const CX = '';
     if (API_KEY === 'YOUR_API_KEY_HERE' || CX === 'YOUR_SEARCH_ENGINE_ID_HERE') {
       container.innerHTML = `<div style='color:red'>Google Custom Search API key and Search Engine ID required.<br>See README for setup.</div>`;
       return;
@@ -261,13 +261,35 @@
           container.innerHTML = '<div>No results found.</div>';
           return;
         }
-        container.innerHTML = data.items.map(item => `
-          <div style='margin-bottom:18px;'>
-            <a href='${item.link}' target='_blank' style='font-size:1.05em;color:#4285f4;text-decoration:none;font-weight:bold;'>${escapeHtml(item.title)}</a><br>
-            <span style='color:#222;font-size:0.98em;'>${escapeHtml(item.snippet)}</span><br>
-            <span style='color:#666;font-size:0.9em;'>${escapeHtml(item.displayLink)}</span>
-          </div>
-        `).join('');
+        container.innerHTML = data.items.map(item => {
+          let resultHtml = `<div style='margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:16px;'>`;
+          
+          // Add thumbnail if available
+          if (item.pagemap && item.pagemap.cse_thumbnail && item.pagemap.cse_thumbnail[0]) {
+            const thumb = item.pagemap.cse_thumbnail[0];
+            resultHtml += `<img src='${thumb.src}' style='float:right; width:80px; height:60px; object-fit:cover; margin-left:12px; border-radius:4px;'>`;
+          }
+          
+          resultHtml += `<a href='${item.link}' target='_blank' style='font-size:1.05em;color:#4285f4;text-decoration:none;font-weight:bold;'>${escapeHtml(item.title)}</a><br>`;
+          
+          // Add structured data if available (ratings, etc.)
+          if (item.pagemap) {
+            if (item.pagemap.aggregaterating && item.pagemap.aggregaterating[0]) {
+              const rating = item.pagemap.aggregaterating[0];
+              resultHtml += `<div style='color:#ff6d01; font-size:0.9em; margin:4px 0;'>⭐ ${rating.ratingvalue || rating.ratingValue} ${rating.bestrating ? `/${rating.bestrating}` : ''}</div>`;
+            }
+            if (item.pagemap.movie && item.pagemap.movie[0]) {
+              const movie = item.pagemap.movie[0];
+              if (movie.genre) resultHtml += `<span style='background:#f0f0f0; padding:2px 6px; border-radius:3px; font-size:0.8em; margin-right:4px;'>${movie.genre}</span>`;
+            }
+          }
+          
+          resultHtml += `<span style='color:#222;font-size:0.98em;'>${escapeHtml(item.snippet)}</span><br>`;
+          resultHtml += `<span style='color:#666;font-size:0.9em;'>${escapeHtml(item.displayLink)}</span>`;
+          resultHtml += `</div>`;
+          
+          return resultHtml;
+        }).join('');
       })
       .catch(err => {
         container.innerHTML = `<div style='color:red'>Error fetching results.<br>${escapeHtml(String(err))}</div>`;
@@ -277,6 +299,14 @@
   // Remove panel on Escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') removeSearchPanel();
+  });
+
+  // Remove panel when clicking outside
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('hover-search-modal-panel');
+    if (panel && !panel.contains(e.target)) {
+      removeSearchPanel();
+    }
   });
 
   function hideButton() {
