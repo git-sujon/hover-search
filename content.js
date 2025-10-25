@@ -1,12 +1,9 @@
 // content script: show a small search icon when hovering words
 (function(){
   const MIN_LENGTH = 2; // minimum chars to search
-  const HOVER_DELAY = 300; // ms delay before showing button
   let lastWord = '';
-  let hoverTimeout = null;
   let button = null;
   let hoveredWords = new Set(); // Use Set to avoid duplicates
-  let wordIndicators = new Map(); // Track visual indicators for hovered words
 
   function createButton() {
     if (document.getElementById('hover-search-button-xyz')) {
@@ -31,13 +28,15 @@
     button.style.transform = 'scale(0.8)';
     button.title = `Search: ${Array.from(hoveredWords).join(' ')}`;
 
-    const img = document.createElement('img');
-    img.src = chrome.runtime.getURL('icons/icon16.png');
-    img.style.width = '20px';
-    img.style.height = '20px';
-    img.style.margin = '8px';
-    img.style.filter = 'brightness(0) invert(1)';
-    button.appendChild(img);
+    const icon = document.createElement('div');
+    icon.textContent = '🔍';
+    icon.style.fontSize = '16px';
+    icon.style.display = 'flex';
+    icon.style.alignItems = 'center';
+    icon.style.justifyContent = 'center';
+    icon.style.width = '100%';
+    icon.style.height = '100%';
+    button.appendChild(icon);
 
     // Add word count badge
     const badge = document.createElement('div');
@@ -74,8 +73,10 @@
     button.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      // Use all hovered words/phrases as a single search query
-      const query = Array.from(hoveredWords).join(' ');
+      // Use the selected text directly
+      const query = lastWord;
+      console.log('Searching for:', `"${query}"`);
+      console.log('Query length:', query.length);
       if (query && query.length >= MIN_LENGTH) {
         showSearchPanel(query);
         hideButton();
@@ -105,36 +106,9 @@
 
   function clearHoveredWords() {
     hoveredWords.clear();
-    // Remove all word indicators
-    wordIndicators.forEach(indicator => {
-      if (indicator.parentNode) {
-        indicator.parentNode.removeChild(indicator);
-      }
-    });
-    wordIndicators.clear();
   }
 
-  function addWordIndicator(element, word) {
-    if (wordIndicators.has(word)) return;
-    
-    const indicator = document.createElement('div');
-    indicator.style.position = 'absolute';
-    indicator.style.background = 'rgba(66, 133, 244, 0.2)';
-    indicator.style.border = '1px solid #4285f4';
-    indicator.style.borderRadius = '3px';
-    indicator.style.pointerEvents = 'none';
-    indicator.style.zIndex = '2147483646';
-    indicator.style.transition = 'all 0.2s ease';
-    
-    const rect = element.getBoundingClientRect();
-    indicator.style.left = (rect.left + window.scrollX) + 'px';
-    indicator.style.top = (rect.top + window.scrollY) + 'px';
-    indicator.style.width = rect.width + 'px';
-    indicator.style.height = rect.height + 'px';
-    
-    document.body.appendChild(indicator);
-    wordIndicators.set(word, indicator);
-  }
+
 
   function renderSearchPanel(query, mode) {
     removeSearchPanel();
@@ -318,25 +292,19 @@
   function showButtonAt(x, y) {
     if (!button) createButton();
     
-    // Add current word to collection if valid
-    if (lastWord && lastWord.length >= MIN_LENGTH) {
-      hoveredWords.add(lastWord.toLowerCase());
-    }
-    
     // Update button position and content
     button.style.left = `${x + 12}px`;
     button.style.top = `${y - 45}px`;
     button.style.display = 'block';
     
-    // Update badge count
+    // Update tooltip
+    button.title = `Search: ${lastWord}`;
+    
+    // Hide badge since we're only searching selected text
     const badge = button.querySelector('#word-count-badge');
     if (badge) {
-      badge.textContent = hoveredWords.size;
-      badge.style.display = hoveredWords.size > 1 ? 'flex' : 'none';
+      badge.style.display = 'none';
     }
-    
-    // Update tooltip
-    button.title = `Search: ${Array.from(hoveredWords).join(' ')} (${hoveredWords.size} word${hoveredWords.size > 1 ? 's' : ''})`;
     
     // Animate button appearance
     setTimeout(() => {
@@ -345,101 +313,42 @@
     }, 10);
   }
 
-  function getWordUnderCursor(event) {
-    try {
-      const range = document.caretRangeFromPoint
-        ? document.caretRangeFromPoint(event.clientX, event.clientY)
-        : (document.caretPositionFromPoint
-            ? (function(p){ const r = document.createRange(); r.setStart(p.offsetNode, p.offset); return r;})(document.caretPositionFromPoint(event.clientX, event.clientY))
-            : null);
-      if (!range) return '';
-      const node = range.startContainer;
-      if (!node || node.nodeType !== Node.TEXT_NODE) return '';
+
+
+  // Text selection event handler
+  document.addEventListener('mouseup', () => {
+    setTimeout(() => {
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) {
+        hideButton();
+        return;
+      }
       
-      const text = node.textContent;
-      const offset = range.startOffset;
+      const selectedText = selection.toString().trim();
       
-      // Find word boundaries
-      let start = offset;
-      let end = offset;
-      
-      // Expand left to find start of word/phrase
-      while (start > 0 && /[\w\s]/.test(text[start - 1])) {
-        start--;
-        // Stop at sentence boundaries
-        if (/[.!?]/.test(text[start])) {
-          start++;
-          break;
+      if (selectedText && selectedText.length >= MIN_LENGTH && !selection.isCollapsed) {
+        lastWord = selectedText;
+        hoveredWords.clear();
+        hoveredWords.add(selectedText);
+        
+        // Get selection position
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        
+        if (rect.width > 0 && rect.height > 0) {
+          showButtonAt(rect.right + window.scrollX, rect.top + window.scrollY);
         }
-      }
-      
-      // Expand right to find end of word/phrase
-      while (end < text.length && /[\w\s]/.test(text[end])) {
-        end++;
-        // Stop at sentence boundaries
-        if (/[.!?]/.test(text[end - 1])) {
-          end--;
-          break;
-        }
-      }
-      
-      let phrase = text.slice(start, end).trim();
-      
-      // Clean up the phrase
-      phrase = phrase.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      
-      // Limit to reasonable phrase length (max 5 words)
-      const words = phrase.split(' ').filter(w => w.length > 0);
-      if (words.length > 5) {
-        // Find the word closest to cursor and take 2 words before and after
-        const cursorWord = Math.floor((offset - start) / (end - start) * words.length);
-        const startIdx = Math.max(0, cursorWord - 2);
-        const endIdx = Math.min(words.length, cursorWord + 3);
-        phrase = words.slice(startIdx, endIdx).join(' ');
-      }
-      
-      return phrase.length >= MIN_LENGTH ? phrase : '';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  // Main hover event handler
-  document.addEventListener('mousemove', (e) => {
-    // Skip if hovering over button or panel
-    if (e.target.closest('#hover-search-button-xyz') || e.target.closest('#hover-search-modal-panel')) {
-      return;
-    }
-
-    // Skip input fields and editable content
-    const tag = e.target.tagName.toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || e.target.contentEditable === 'true') {
-      hideButton();
-      return;
-    }
-
-    clearTimeout(hoverTimeout);
-    hoverTimeout = setTimeout(() => {
-      const word = getWordUnderCursor(e);
-      if (word && word !== lastWord) {
-        lastWord = word;
-        showButtonAt(e.clientX, e.clientY);
-      } else if (!word) {
+      } else {
         hideButton();
       }
-    }, HOVER_DELAY);
+    }, 10);
   });
 
-  // Hide button when mouse leaves the page
-  document.addEventListener('mouseleave', () => {
-    clearTimeout(hoverTimeout);
-    hideButton();
-  });
-
-  // Clear words on double-click (reset)
-  document.addEventListener('dblclick', () => {
-    clearHoveredWords();
-    hideButton();
+  // Hide button when clicking elsewhere
+  document.addEventListener('mousedown', (e) => {
+    if (!e.target.closest('#hover-search-button-xyz')) {
+      hideButton();
+    }
   });
 
 })();
