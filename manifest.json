@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Hover Search",
+  "name": "Quick Search",
   "version": "0.1.0",
-  "description": "Hover a word and click the popup icon to search Google without leaving the tab.",
+  "description": "Select any text and click the search icon to instantly search Google without leaving your current tab.",
   "permissions": [
     "scripting",
     "activeTab",
